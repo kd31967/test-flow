@@ -45,6 +45,8 @@ export default function Settings({ onClose }: SettingsProps) {
   const saveSettings = async () => {
     setSaving(true);
     try {
+      console.log('Saving settings:', { phoneNumberId, accessToken: '***' });
+
       const response = await fetch('/api/profile', {
         method: 'PATCH',
         headers: {
@@ -56,15 +58,22 @@ export default function Settings({ onClose }: SettingsProps) {
         }),
       });
 
+      console.log('Save response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to save settings');
+        const errorText = await response.text();
+        console.error('Save failed:', errorText);
+        throw new Error(`Failed to save settings: ${response.status} ${errorText}`);
       }
+
+      const result = await response.json();
+      console.log('Settings saved:', result);
 
       alert('Settings saved successfully!');
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving settings:', error);
-      alert('Failed to save settings');
+      alert(`Failed to save settings: ${error.message}`);
     } finally {
       setSaving(false);
     }
