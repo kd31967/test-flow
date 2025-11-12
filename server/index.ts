@@ -42,6 +42,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await setupVite(app, server);
+
   const storage = new DbStorage();
   const router = createRouter(storage);
   app.use(router);
@@ -52,8 +54,6 @@ app.use((req, res, next) => {
     console.error("Error:", err);
     res.status(status).json({ message });
   });
-
-  await setupVite(app, server);
 
   const PORT = process.env.PORT || 5000;
   server.listen(PORT, "0.0.0.0", () => {
