@@ -4,6 +4,7 @@ import Canvas from './Canvas';
 import ConfigPanel from './ConfigPanel';
 import { Save, Download, ArrowLeft } from 'lucide-react';
 import { FlowVariable } from '../lib/variableSystem';
+import { supabase } from '../lib/api';
 
 interface NewFlowBuilderProps {
   flowId?: string;
@@ -27,12 +28,14 @@ export default function NewFlowBuilder({ flowId, onBack }: NewFlowBuilderProps) 
 
   const loadFlow = async (id: string) => {
     try {
-      const response = await fetch(`/api/flows/${id}`);
-      if (!response.ok) {
-        throw new Error('Failed to load flow');
-      }
+      const { data, error } = await supabase
+        .from('flows')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-      const data = await response.json();
+      if (error) throw error;
+      if (!data) throw new Error('Flow not found');
 
       setFlowName(data.name);
       setFlowDescription(data.description || '');
@@ -51,9 +54,9 @@ export default function NewFlowBuilder({ flowId, onBack }: NewFlowBuilderProps) 
         }));
         setNodes(loadedNodes);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading flow:', error);
-      alert('Failed to load flow');
+      alert(`Failed to load flow: ${error.message}`);
     }
   };
 
@@ -228,48 +231,41 @@ export default function NewFlowBuilder({ flowId, onBack }: NewFlowBuilderProps) 
         }, {} as Record<string, any>)
       };
 
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || 'demo-user';
+
       const flowData = {
         name: flowName,
         description: flowDescription,
         status: isDraft ? 'draft' : 'active',
-        triggerKeywords,
+        trigger_keywords: triggerKeywords,
         config: flowConfig,
-        category: 'Custom'
+        category: 'Custom',
+        user_id: userId
       };
 
       if (currentFlowId) {
-        const response = await fetch(`/api/flows/${currentFlowId}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(flowData),
-        });
+        const { error } = await supabase
+          .from('flows')
+          .update(flowData)
+          .eq('id', currentFlowId);
 
-        if (!response.ok) {
-          throw new Error('Failed to update flow');
-        }
+        if (error) throw error;
       } else {
-        const response = await fetch('/api/flows', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(flowData),
-        });
+        const { data, error } = await supabase
+          .from('flows')
+          .insert(flowData)
+          .select()
+          .single();
 
-        if (!response.ok) {
-          throw new Error('Failed to create flow');
-        }
-
-        const data = await response.json();
-        setCurrentFlowId(data.id);
+        if (error) throw error;
+        if (data) setCurrentFlowId(data.id);
       }
 
       alert('Flow saved successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving flow:', error);
-      alert('Failed to save flow');
+      alert(`Failed to save flow: ${error.message}`);
     } finally {
       setSaving(false);
     }
