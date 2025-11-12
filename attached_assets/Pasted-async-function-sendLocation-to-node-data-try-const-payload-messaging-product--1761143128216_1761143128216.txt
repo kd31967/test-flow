@@ -1,0 +1,161 @@
+async function sendLocation(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "location",
+      location: {
+        latitude: substitute(node.latitude, data),
+        longitude: substitute(node.longitude, data),
+        name: substitute(node.name || "", data),
+        address: substitute(node.address || "", data),
+      },
+    };
+    console.log("📤 Sending location:", JSON.stringify(payload, null, 2));
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ Location sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error("❌ Location error:", err.response?.data || err.message);
+  }
+}
+
+async function sendTemplate(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: substitute(node.template_name, data),
+        language: { code: node.language || "en_US" },
+        components: deepSubstitute(node.components || [], data),
+      },
+    };
+    console.log("📤 Sending template:", JSON.stringify(payload, null, 2));
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ Template sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error("❌ Template error:", err.response?.data || err.message);
+  }
+}
+
+async function sendLocationRequest(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "location_request_message",
+        body: {
+          text: substitute(node.body || "📍 Please share your location", data),
+        },
+        action: { name: "send_location" },
+      },
+    };
+    console.log(
+      "📤 Sending Location Request Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ Location request sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ sendLocationRequest Error:",
+      err.response?.data || err.message,
+    );
+  }
+}
+
+async function sendCtaUrlMessage(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "cta_url",
+        header: node.header ? deepSubstitute(node.header, data) : undefined,
+        body: { text: substitute(node.body, data) },
+        action: {
+          name: "cta_url",
+          parameters: {
+            display_text: substitute(node.button_text || "Open Link", data),
+            url: substitute(node.url, data),
+          },
+        },
+        footer: node.footer
+          ? { text: substitute(node.footer, data) }
+          : undefined,
+      },
+    };
+    console.log(
+      "📤 Sending CTA URL Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ CTA URL message sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ sendCtaUrlMessage Error:",
+      err.response?.data || err.message,
+    );
+  }
+}
+
+async function sendTemplateMessage(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "template",
+      template: deepSubstitute(
+        {
+          name: node.template_name,
+          language: { code: node.language || "en_US" },
+          components: node.components || [],
+        },
+        data,
+      ),
+    };
+    console.log(
+      "📤 Sending Template Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ Template message sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ sendTemplateMessage Error:",
+      err.response?.data || err.message,
+    );
+  }
+}

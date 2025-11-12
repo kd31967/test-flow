@@ -1,0 +1,79 @@
+{
+  "flowName": "Untitled Flow",
+  "metadata": {
+    "created_by": "{{USER_ID}}",
+    "app_id": "{{USER_APP_ID}}",
+    "business_id": "{{USER_BUSINESS_ID}}",
+    "access_token": "{{USER_ACCESS_TOKEN}}",
+    "created_at": "2025-10-22T08:51:23.112Z",
+    "version": "1.0"
+  },
+  "config": {
+    "category": "Custom",
+    "description": "Untitled Flow automation flow",
+    "trigger": {
+      "id": "node_1761123003053",
+      "type": "catch_webhook",
+      "position": {
+        "x": 50,
+        "y": 50
+      },
+      "data": {
+        "label": "Catch Webhook",
+        "config": {
+          "webhook_url": "https://c7789edb-a1ab-413c-8b44-0bd1d0df1250-00-ne4rxk4mh52k.spock.replit.dev/api/custom-webhook/untitled-flow/node_1761123003053",
+          "flow_name": "Untitled Flow",
+          "url_identifier": "untitled-flow",
+          "node_id": "node_1761123003053",
+          "allowed_methods": [
+            "GET",
+            "POST",
+            "DELETE"
+          ],
+          "next": "node_1761123027817"
+        },
+        "preview": ""
+      },
+      "flowName": "Untitled Flow"
+    },
+    "start_node": "node_1761123003053",
+    "variables": {},
+    "settings": {
+      "timeout": 1800,
+      "fallback_node": "error_handler",
+      "error_handling": "graceful",
+      "analytics_enabled": true
+    }
+  },
+  "nodes": {
+    "node_1761123003053": {
+      "type": "catch_webhook",
+      "config": {
+        "webhook_url": "https://c7789edb-a1ab-413c-8b44-0bd1d0df1250-00-ne4rxk4mh52k.spock.replit.dev/api/custom-webhook/untitled-flow/node_1761123003053",
+        "flow_name": "Untitled Flow",
+        "url_identifier": "untitled-flow",
+        "node_id": "node_1761123003053",
+        "allowed_methods": [
+          "GET",
+          "POST",
+          "DELETE"
+        ],
+        "next": "node_1761123027817"
+      },
+      "position": {
+        "x": 50,
+        "y": 50
+      }
+    },
+    "node_1761123027817": {
+      "type": "send_message",
+      "config": {
+        "answerText": "jkdsk"
+      },
+      "position": {
+        "x": 500,
+        "y": 50
+      }
+    }
+  }
+}

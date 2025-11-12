@@ -1,0 +1,111 @@
+Here’s your **final combined, professionally formatted and implementation-ready specification** for fixing and enhancing the **Custom Webhook, HTTP Node, Autocomplete Variable, and Node Connection Alignment** — ensuring all existing “send message” and other functionalities remain intact.
+
+---
+
+## 🚀 Final Specification: Webhook, HTTP Node, Variable Autocomplete & Node Connection Alignment
+
+**Objective:** Improve the Flow Builder’s usability, functionality, and visual alignment — without breaking any existing features such as **Send Message**, **Execute Node**, or **Flow Trigger**.
+
+---
+
+### 🔧 1. Custom Webhook Node Enhancements
+
+#### **Issues Identified**
+
+* Dynamic variables from webhook payload are not accessible in subsequent nodes.
+* HTTP Method (GET/POST/PUT/DELETE) configuration is missing in the UI.
+* “Test Webhook” button is not visible in the node configuration panel.
+
+#### **Expected Behavior / Fixes**
+
+✅ Automatically capture all incoming payload fields and expose them as flow variables.
+
+* Example:
+  Incoming webhook payload:
+
+  ```json
+  {
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+  ```
+
+  Should be available as:
+
+  * `{{webhook.data.name}}`
+  * `{{webhook.data.email}}`
+
+✅ Add **HTTP Method Dropdown** (GET, POST, PUT, DELETE) in the **Webhook Node Settings**.
+✅ Add a **“Test Webhook” button** in the Webhook Node UI to allow users to send a sample request and verify the response directly.
+✅ Ensure **dynamic variables are auto-added** to the variable context so they appear in autocomplete in all subsequent nodes.
+✅ Ensure **existing webhook flow triggers and send message flows** remain fully functional.
+
+---
+
+### 🌐 2. HTTP Node Enhancements
+
+#### **Issues Identified**
+
+* The **“Test API” button** is missing in the HTTP Node UI.
+* The API request/response preview is not accessible for debugging.
+
+#### **Expected Behavior / Fixes**
+
+✅ Add a **“Test API” button** inside the HTTP Node configuration panel.
+
+* When clicked, it should:
+
+  * Send a test request using configured URL, headers, and body.
+  * Show a formatted response preview (JSON, text, or HTML).
+
+✅ Keep all existing “HTTP request send” logic intact to avoid breaking automation flows.
+✅ The **response** from the test should not affect runtime executions — it’s purely for testing.
+
+✅ Ensure backward compatibility:
+
+* `{{variable}}` referencing, including webhook and system variables, must work as before.
+* No breaking changes in previously configured HTTP nodes.
+
+---
+
+### 🧠 3. Variable Autocomplete System
+
+#### **Issues Identified**
+
+* Dynamic variables from webhook responses are not shown in autocomplete.
+* Only system variables appear when typing `{{`.
+
+#### **Expected Behavior / Fixes**
+
+✅ Once a webhook or HTTP response is received, dynamically create flow variables from payload keys.
+✅ Add them to the autocomplete system so they appear when typing `{{`.
+✅ Example:
+
+* After webhook trigger with payload `{ "id": 10, "user": "Alice" }`
+* Autocomplete should list:
+
+  * `{{webhook.data.id}}`
+  * `{{webhook.data.user}}`
+    ✅ Must support nested JSON via dot notation (e.g., `{{webhook.data.user.name}}`).
+    ✅ Preserve all existing variable injection behavior (no impact on “send message”, etc.).
+
+---
+
+### 🔗 4. Node Connection & Alignment Improvements
+
+#### **Issues Identified**
+
+* Node connections are not properly centered.
+* Lines overlap or break alignment when adding/moving nodes.
+
+#### **Expected Behavior / Fixes**
+
+✅ Each node connects from **center-bottom (output)** to **center-top (input)** of the next node.
+✅ Use **smooth Bezier curves** for connector lines (visually elegant).
+✅ Auto-adjust connectors when nodes are moved or resized.
+✅ Maintain proper spacing and prevent line overlaps.
+✅ Adopt the similar node connection i have attahed in spanpshot
+
+
+
+

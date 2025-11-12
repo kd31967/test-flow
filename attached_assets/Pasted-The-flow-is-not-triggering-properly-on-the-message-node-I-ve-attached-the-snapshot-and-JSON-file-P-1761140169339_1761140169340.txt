@@ -1,0 +1,226 @@
+The flow is not triggering properly on the message node. I’ve attached the snapshot and JSON file. Please check and ensure all connected nodes work correctly — especially Send Media Message, Send Button Message, and Send List Message — whether connected via Custom Webhook or Message nodes.
+
+Also, fix the Send List Message white-screen error without breaking existing working flows.
+Use the provided send template JSON and reference curl command for the interactive List Message node
+
+
+
+This samle curl command for send List Message code format. integrate for send list message node and shoud work with ui.
+'https://graph.facebook.com/<API_VERSION>/<WHATSAPP_BUSINESS_PHONE_NUMBER_ID>/messages' \
+-H 'Content-Type: application/json' \
+-H 'Authorization: Bearer <ACCESS_TOKEN>' \
+-d '
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "<WHATSAPP_USER_PHONE_NUMBER>",
+  "type": "interactive",
+  "interactive": {
+    "type": "list",
+    "header": {
+      "type": "text",
+      "text": "<MESSAGE_HEADER_TEXT>"
+    },
+    "body": {
+      "text": "<MESSAGE_BODY_TEXT>"
+    },
+    "footer": {
+      "text": "<MESSAGE_FOOTER_TEXT>"
+    },
+    "action": {
+      "button": "<BUTTON_TEXT>",
+      "sections": [
+        {
+          "title": "<SECTION_TITLE_TEXT>",
+          "rows": [
+            {
+              "id": "<ROW_ID>",
+              "title": "<ROW_TITLE_TEXT>",
+              "description": "<ROW_DESCRIPTION_TEXT>"
+            }
+            <!-- Additional rows would go here -->
+          ]
+        }
+        <!-- Additional sections would go here -->
+      ]
+    }
+  }
+}'  
+
+This sample curl command for send btton Message code format. integrate for send button message node and shoud work with ui.
+ 
+'https://graph.facebook.com/<API_VERSION>/<WHATSAPP_BUSINESS_PHONE_NUMBER_ID>/messages' \
+-H 'Content-Type: application/json' \
+-H 'Authorization: Bearer <ACCESS_TOKEN>' \
+-d '
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "<WHATSAPP_USER_PHONE_NUMBER>",
+  "type": "interactive",
+  "interactive": {
+    "type": "button",
+    "header": {<MESSAGE_HEADER>},
+    "body": {
+      "text": "<BODY_TEXT>"
+    },
+    "footer": {
+      "text": "<FOOTER_TEXT>"
+    },
+    "action": {
+      "buttons": [
+        {
+          "type": "reply",
+          "reply": {
+            "id": "<BUTTON_ID>",
+            "title": "<BUTTON_LABEL_TEXT>"
+          }
+        }
+        <!-- Additional buttons would go here (maximum 3) -->
+      ]
+    }
+  }
+}'  
+
+create the sturcture for "Send Template" node in ui and ui side passed all input as whatever mention as input body and template name curl -X  POST \
+ 'https://graph.facebook.com/v16.0/FROM_PHONE_NUMBER_ID/messages' \
+ -H 'Authorization: Bearer ACCESS_TOKEN' \
+ -H 'Content-Type: application/json' \
+ -d '{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "PHONE_NUMBER",
+  "type": "template",
+  "template": {
+    "name": "TEMPLATE_NAME",
+    "language": {
+      "code": "LANGUAGE_AND_LOCALE_CODE"
+    },
+    "components": [
+      {
+        "type": "button",
+        "sub_type": "flow",
+        "index": "0",
+        "parameters": [
+          {
+            "type": "action",
+            "action": {
+              "flow_token": "FLOW_TOKEN",   //optional, default is "unused"
+              "flow_action_data": {
+ 
+
+ ...
+              }   // optional, json object with the data payload for the first screen
+            }
+          }
+        ]
+      }
+    ]
+  }
+}'
+
+
+
+
+Add new node send Location in ui and create the ui based on this and create function function for this
+curl 'https://graph.facebook.com/<API_VERSION>/<WHATSAPP_BUSINESS_PHONE_NUMBER_ID>/messages' \
+-H 'Content-Type: application/json' \
+-H 'Authorization: Bearer <ACCESS_TOKEN>' \
+-d '
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": "<WHATSAPP_USER_PHONE_NUMBER>",
+  "type": "location",
+  "location": {
+    "latitude": "<LOCATION_LATITUDE>",
+    "longitude": "<LOCATION_LONGITUDE>",
+    "name": "<LOCATION_NAME>",
+    "address": "<LOCATION_ADDRESS>"
+  }
+}'
+
+Location request messages in ui and create the ui based on this and create function function for this or combine send and reuest location as choise
+
+
+curl 'https://graph.facebook.com/<API_VERSION>/<WHATSAPP_BUSINESS_PHONE_NUMBER_ID>/messages' \
+-H 'Content-Type: application/json' \
+-H 'Authorization: Bearer <ACCESS_TOKEN>' \
+-d '
+{
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "type": "interactive",
+  "to": "<WHATSAPP_USER_PHONE_NUMBER>",
+  "interactive": {
+    "type": "location_request_message",
+    "body": {
+      "text": "<BODY_TEXT>"
+    },
+    "action": {
+      "name": "send_location"
+    }
+  }
+}'
+
+
+Check on message type incoming is audio and video or image should save in some location as create for audio/video/image directory and create the dynamic vaiable as path_audio_<uniue_id> and save the auido as <unique_id> inside audio folder. and similar for video 
+path_video_<uniue_id> and directory unique_id inside video folder. and same for image. and reponse send the path to next sub sequenent node  as well as.
+
+
+2nd For on message incoming text create as dynamic vaiable and store are value and passed the node. 
+
+
+else if (messages.type === "audio") {
+      try {
+        const mediaId = messages.audio.id;
+        console.log("🎧 Incoming audio media ID:", mediaId);
+
+        // Step 1: Get media URL from WhatsApp API
+        const mediaResp = await axios.get(
+          `https://graph.facebook.com/v17.0/${mediaId}`,
+          {
+            headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+          },
+        );
+
+        const mediaUrl = mediaResp.data.url;
+        console.log("🔗 WhatsApp Audio URL:", mediaUrl);
+
+        // Step 2: Download the audio file (binary)
+        const audioResp = await axios.get(mediaUrl, {
+          headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+          responseType: "arraybuffer",
+        });
+        // Ensure directory exists
+        const saveDir = path.join(__dirname, "media", "audio");
+        if (!fs.existsSync(saveDir)) {
+          fs.mkdirSync(saveDir, { recursive: true });
+        }
+        // Save file
+        const fileName = `audio_${Date.now()}.ogg`;
+        const savePath = path.join(saveDir, fileName);
+        fs.writeFileSync(savePath, audioResp.data);
+
+        console.log("✅ Audio saved:", savePath);
+
+        // 3. Build public URL from your server
+        const publicUrl = `${serverURL}/media/audio/${fileName}`;
+
+        // Save in session
+        // ✅ Save into session so it can be used later
+        session.data[node.save_as] = publicUrl;
+
+        console.log("💾 Saved to session.data['USER_AUDIO'] =", publicUrl);
+        console.log(`🎧 Audio saved: ${savePath}`);
+        console.log(`🌍 Public URL: ${publicUrl}`);
+      } catch (err) {
+        console.error(
+          "❌ Audio download failed:",
+          err.response?.data || err.message,
+        );
+        userText = "[Audio failed]";
+      }
+	  
+	  
+3. And more important point each node capture the reponse and create the variable as each node_id save the value. and passed the value to next node connected node. used this use customer next node {{ then automaticaly populate. 

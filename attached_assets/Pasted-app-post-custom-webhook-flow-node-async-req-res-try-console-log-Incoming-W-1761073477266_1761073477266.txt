@@ -1,0 +1,89 @@
+app.post("/custom-webhook/:flow/:node", async (req, res) => {
+  try {
+    console.log("📥 Incoming Webhook Data:", req.body);
+
+    const flow = req.params.flow;
+    const node = req.params.node;
+    const flowData = flowConfig[flow];
+
+    if (!flowData) {
+      return res.status(404).send({ error: `Flow '${flow}' not found` });
+    }
+
+    const nodeData = flowData.nodes[node];
+    if (!nodeData || nodeData.type !== "webhook") {
+      return res.status(400).send({ error: `Invalid webhook node '${node}'` });
+    }
+
+    // Normalize payload
+    let payload = req.body || {};
+    if (typeof req.body === "string") {
+      try {
+        payload = JSON.parse(req.body);
+      } catch (err) {
+        console.error("❌ Invalid JSON from webhook:", err);
+        return res.status(400).send({ error: "Invalid JSON format" });
+      }
+    }
+
+    // determine mobile field (flow config or fallback detection)
+    const mobileField = nodeData.mobile_field || "ASSIGNE_TO_MOBILE";
+    const possible =
+      payload[mobileField] ||
+      payload.whatsapp ||
+      payload.mobile ||
+      payload.phone ||
+      payload.phone_number ||
+      null;
+
+    if (!possible) {
+      console.error("❌ No mobile/whatsapp/phone number found in payload.");
+      return res
+        .status(400)
+        .send({ error: "Missing mobile/whatsapp/phone in webhook data." });
+    }
+
+    const mobile = possible.toString().replace(/\D/g, "");
+    console.log("📱 Mapped WhatsApp Mobile Number →", mobile);
+
+    // Force switch session to incoming flow/node (important)
+    if (!sessions[mobile]) {
+      sessions[mobile] = { currentFlow: flow, currentNode: node, data: {} };
+    } else {
+      sessions[mobile].currentFlow = flow;
+      sessions[mobile].currentNode = node;
+    }
+
+    // Merge payload data into session
+    sessions[mobile].data = { ...sessions[mobile].data, ...payload };
+
+    console.log(
+      "🧭 Session switched → FLOW:",
+      sessions[mobile].currentFlow,
+      "NODE:",
+      sessions[mobile].currentNode,
+    );
+    console.log("🛠️ Dynamic Fields Created:");
+    Object.entries(payload).forEach(([k, v]) => console.log(`   → ${k}: ${v}`));
+
+    // Move to next node automatically if configured
+    const nextNode = nodeData.next;
+    if (nextNode && flowData.nodes[nextNode]) {
+      sessions[mobile].currentNode = nextNode;
+      console.log("🔀 Moving to Next Node →", nextNode);
+      await handleNode(nextNode, mobile, sessions[mobile]);
+    } else {
+      console.log("⚠️ No next node configured for webhook node:", node);
+    }
+
+    return res.status(200).send({
+      status: "Webhook processed successfully ✅",
+      mobile,
+      nextNode: nextNode || null,
+      sessionData: sessions[mobile].data,
+    });
+  } catch (err) {
+    console.error("❌ Webhook Processing Error:", err.stack || err.message);
+    return res.status(500).send({ error: "Internal Server Error" });
+  }
+});

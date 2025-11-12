@@ -1,0 +1,110 @@
+{
+  "flowName": "Untitled Flow",
+  "metadata": {
+    "created_by": "{{USER_ID}}",
+    "app_id": "{{USER_APP_ID}}",
+    "business_id": "{{USER_BUSINESS_ID}}",
+    "access_token": "{{USER_ACCESS_TOKEN}}",
+    "created_at": "2025-10-22T09:43:48.533Z",
+    "version": "1.0"
+  },
+  "config": {
+    "category": "Custom",
+    "description": "Untitled Flow automation flow",
+    "trigger": {
+      "id": "node_1761125450580",
+      "type": "on_message",
+      "position": {
+        "x": 50,
+        "y": 50
+      },
+      "data": {
+        "label": "On Message",
+        "config": {
+          "keywords": "new",
+          "next": "node_1761125877799"
+        },
+        "preview": "Triggered when a new message is created"
+      },
+      "flowName": "Untitled Flow"
+    },
+    "start_node": "node_1761125450580",
+    "variables": {},
+    "settings": {
+      "timeout": 1800,
+      "fallback_node": "error_handler",
+      "error_handling": "graceful",
+      "analytics_enabled": true
+    }
+  },
+  "nodes": {
+    "node_1761125450580": {
+      "type": "on_message",
+      "config": {
+        "keywords": "new",
+        "next": "node_1761125877799"
+      },
+      "position": {
+        "x": 50,
+        "y": 50
+      }
+    },
+    "node_1761125877799": {
+      "type": "send_button",
+      "config": {
+        "headerType": "none",
+        "headerText": "",
+        "headerMediaUrl": "",
+        "bodyText": "dsaf",
+        "footerText": "sda",
+        "buttons": [
+          {
+            "id": "btn_1761125905501",
+            "title": "button1",
+            "nextNodeId": "node_1761126094614"
+          },
+          {
+            "id": "btn_1761125912418",
+            "title": "button2",
+            "nextNodeId": "node_1761126156050"
+          }
+        ]
+      },
+      "position": {
+        "x": 487,
+        "y": 62
+      }
+    },
+    "node_1761126094614": {
+      "type": "send_button",
+      "config": {
+        "headerType": "none",
+        "headerText": "",
+        "headerMediaUrl": "",
+        "bodyText": ".mkn",
+        "footerText": ",",
+        "buttons": [
+          {
+            "id": "btn_1761126127050",
+            "title": "button1",
+            "nextNodeId": ""
+          }
+        ]
+      },
+      "position": {
+        "x": 937,
+        "y": 50
+      }
+    },
+    "node_1761126156050": {
+      "type": "send_media",
+      "config": {
+        "mediaUrl": "https://cdn.pixabay.com/photo/2015/01/07/15/51/woman-591576_1280.jpg"
+      },
+      "position": {
+        "x": 1111,
+        "y": 481
+      }
+    }
+  }
+}

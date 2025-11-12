@@ -1,0 +1,1235 @@
+const express = require("express");
+const axios = require("axios");
+const { google } = require("googleapis");
+const path = require("path");
+const fs = require("fs");
+const serverURL =
+  "https://a7e522b9-c754-46fb-a9ce-75edc095b3a0-00-2p2lwr4y8rb73.pike.replit.dev/";
+const webhookurl_meta =
+  "https://a7e522b9-c754-46fb-a9ce-75edc095b3a0-00-2p2lwr4y8rb73.pike.replit.dev/webhook/";
+const app = express();
+app.use(express.json());
+
+// ==================== CONFIG ====================
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || "712851615243145";
+const WHATSAPP_ACCESS_TOKEN =
+  process.env.WHATSAPP_ACCESS_TOKEN ||
+  "EAAO4J3qeOYUBPTPA2WRa37XDbMctNlg74thvWfJsQhk2u8IHoEnBqXAqg8ZAQJouct6Bjy3b9NMTHeGmJnhsnB3ZAbhzOhEuPD2OqwQjeUN9p1FZBJHC3QSS5ANmOKvV6BrFEwxvhYw5ZBBkPjdNZAhLPM7opZApfUqBXZBS75huCVwPVhZBuJtz32avwYsRHTFTFgZDZD";
+const WEBHOOK_VERIFY_TOKEN =
+  process.env.WEBHOOK_VERIFY_TOKEN || "my-verify-token";
+
+// Google Sheets Config (credentials.json must exist)
+const auth = new google.auth.GoogleAuth({
+  keyFile: path.join(__dirname, "credentials.json"),
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
+const sheets = google.sheets({ version: "v4", auth });
+
+let sheetBuffer = [];
+let lastSpreadsheetId = null;
+let lastRange = null;
+
+let sessions = {}; // sessions keyed by whatsapp number
+let flowConfig = {};
+
+// ==================== LOAD & WATCH FLOWS ====================
+const flowDir = path.join(__dirname, "flow");
+
+function loadFlows() {
+  const flows = {};
+  const files = fs.existsSync(flowDir)
+    ? fs
+        .readdirSync(flowDir)
+        .filter((f) => f.startsWith("flow") && f.endsWith(".json"))
+    : [];
+
+  files.forEach((file) => {
+    const full = path.join(flowDir, file);
+    delete require.cache[require.resolve(full)];
+    try {
+      const flowData = require(full);
+      Object.assign(flows, flowData);
+    } catch (err) {
+      console.error("⚠️ Error loading flow:", file, err.message);
+    }
+  });
+
+  flowConfig = flows;
+  console.log("✅ Flows reloaded:", Object.keys(flowConfig));
+}
+
+loadFlows();
+if (fs.existsSync(flowDir)) {
+  fs.watch(flowDir, (eventType, filename) => {
+    if (filename && filename.startsWith("flow") && filename.endsWith(".json")) {
+      console.log(`🔄 Flow file changed: ${filename}, reloading...`);
+      loadFlows();
+    }
+  });
+}
+
+// ==================== WEBHOOK VERIFICATION ====================
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (mode && token === WEBHOOK_VERIFY_TOKEN) res.status(200).send(challenge);
+  else res.sendStatus(403);
+});
+
+// ==================== TEMPLATING HELPERS ====================
+
+// (keep your existing getValueByPath and safeString)
+// If you don’t have them, here they are:
+function getValueByPath(data, path) {
+  if (data == null) return undefined;
+  const parts = String(path).split(".");
+  let cur = data;
+  for (const rawPart of parts) {
+    if (cur == null) return undefined;
+    const tryKeys = [rawPart, rawPart.toUpperCase(), rawPart.toLowerCase()];
+    let found = false;
+    for (const k of tryKeys) {
+      if (Object.prototype.hasOwnProperty.call(cur, k)) {
+        cur = cur[k];
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      const matchKey = Object.keys(cur || {}).find((kk) =>
+        kk.toLowerCase().includes(rawPart.toLowerCase()),
+      );
+      if (matchKey) cur = cur[matchKey];
+      else return undefined;
+    }
+  }
+  return cur;
+}
+
+function safeString(v) {
+  if (v === undefined || v === null) return "";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+// Merge dynamic globals (date/time) every time we substitute
+function withGlobals(data = {}) {
+  try {
+    const g =
+      typeof global.getCurrentDateTime === "function"
+        ? global.getCurrentDateTime()
+        : {};
+    return { ...g, ...data };
+  } catch {
+    return { ...data };
+  }
+}
+
+// Replace placeholders inside strings: "Hello {{NAME}} at {{CURRENT_TIME}}"
+function substitute(template, data = {}) {
+  const merged = withGlobals(data);
+  if (template === undefined || template === null) return "";
+  if (typeof template !== "string") return template;
+
+  return template.replace(/\{\{(.*?)\}\}/g, (_, key) => {
+    const k = key.trim();
+    const val = getValueByPath(merged, k);
+    return val !== undefined ? safeString(val) : "";
+  });
+}
+
+// Deep replacement for objects/arrays, preserving types when the entire value is a token:
+// e.g. { a: "{{NUMBER}}" } => number type if NUMBER is 123
+function deepSubstitute(input, data = {}) {
+  const merged = withGlobals(data);
+
+  if (input === null || input === undefined) return input;
+
+  if (typeof input === "string") {
+    const full = input.match(/^\{\{\s*(.*?)\s*\}\}$/);
+    if (full) {
+      const v = getValueByPath(merged, full[1]);
+      return v !== undefined ? v : "";
+    }
+    return substitute(input, merged);
+  }
+
+  if (Array.isArray(input)) {
+    return input.map((v) => deepSubstitute(v, merged));
+  }
+
+  if (typeof input === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(input)) {
+      out[k] = deepSubstitute(v, merged);
+    }
+    return out;
+  }
+
+  return input;
+}
+
+// ==================== MAIN WHATSAPP WEBHOOK ====================
+app.post("/webhook", async (req, res) => {
+  try {
+    const entry = req.body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const messages = changes?.value?.messages?.[0];
+    if (!messages) return res.sendStatus(200);
+
+    const from = messages.from;
+    console.log(
+      "📥 Incoming WhatsApp message from",
+      from,
+      "type:",
+      messages.type,
+    );
+
+    // If there's no session, try to match a trigger to start a new flow
+    if (!sessions[from]) {
+      const isInteractive = messages.type === "interactive";
+      const userText = messages.text?.body?.trim()?.toLowerCase();
+      let startedFlow = null;
+
+      for (const [flowName, flow] of Object.entries(flowConfig)) {
+        if (!Array.isArray(flow.trigger)) continue;
+
+        // interactive reply could match trigger by id or title
+        if (isInteractive) {
+          const replyTitle =
+            messages.interactive?.button_reply?.title ||
+            messages.interactive?.list_reply?.title ||
+            "";
+          const replyId =
+            messages.interactive?.button_reply?.id ||
+            messages.interactive?.list_reply?.id ||
+            "";
+          if (
+            flow.trigger.some(
+              (t) => t.toLowerCase() === replyTitle.toLowerCase(),
+            ) ||
+            flow.trigger.some((t) => t.toLowerCase() === replyId.toLowerCase())
+          ) {
+            sessions[from] = {
+              currentFlow: flowName,
+              currentNode: flow.start_node,
+              data: {},
+            };
+            console.log(
+              "🟢 Starting flow (interactive-trigger):",
+              flowName,
+              "node:",
+              flow.start_node,
+            );
+            await handleNode(flow.start_node, from, sessions[from]);
+            startedFlow = flowName;
+            break;
+          }
+        } else if (userText) {
+          if (flow.trigger.some((t) => t.toLowerCase() === userText)) {
+            sessions[from] = {
+              currentFlow: flowName,
+              currentNode: flow.start_node,
+              data: {},
+            };
+            console.log(
+              "🟢 Starting flow (text-trigger):",
+              flowName,
+              "node:",
+              flow.start_node,
+            );
+            await handleNode(flow.start_node, from, sessions[from]);
+            startedFlow = flowName;
+            break;
+          }
+        }
+      }
+
+      if (!startedFlow) {
+        await sendMessage(
+          from,
+          "⚡ Please type a valid keyword to start (e.g., 'assign task').",
+        );
+      }
+
+      return res.sendStatus(200);
+    }
+
+    // If session exists, process incoming reply for current node
+    const flowName = sessions[from].currentFlow;
+    const flow = flowConfig[flowName];
+    if (!flow) {
+      console.warn(
+        "❌ Session has unknown flow:",
+        flowName,
+        "clearing session.",
+      );
+      delete sessions[from];
+      return res.sendStatus(200);
+    }
+
+    await handleIncoming(messages, from, flow, sessions[from]);
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("Webhook Error:", err.stack || err.message);
+    return res.sendStatus(500);
+  }
+});
+https://c7789edb-a1ab-413c-8b44-0bd1d0df1250-00-ne4rxk4mh52k.spock.replit.dev/functions/v1/whatsapp-webhook
+// ==================== DYNAMIC WEBHOOKS (external apps calling into a flow) ====================
+app.post("/custom-webhook/:flow/:node", async (req, res) => {
+  try {
+    console.log("📥 Incoming Webhook Data:", req.body);
+
+    const flow = req.params.flow;
+    const node = req.params.node;
+    const flowData = flowConfig[flow];
+
+    if (!flowData) {
+      return res.status(404).send({ error: `Flow '${flow}' not found` });
+    }
+
+    const nodeData = flowData.nodes[node];
+    if (!nodeData || nodeData.type !== "webhook") {
+      return res.status(400).send({ error: `Invalid webhook node '${node}'` });
+    }
+
+    // Normalize payload
+    let payload = req.body || {};
+    if (typeof req.body === "string") {
+      try {
+        payload = JSON.parse(req.body);
+      } catch (err) {
+        console.error("❌ Invalid JSON from webhook:", err);
+        return res.status(400).send({ error: "Invalid JSON format" });
+      }
+    }
+
+    // determine mobile field (flow config or fallback detection)
+    const mobileField = nodeData.mobile_field || "ASSIGNE_TO_MOBILE";
+    const possible =
+      payload[mobileField] ||
+      payload.whatsapp ||
+      payload.mobile ||
+      payload.phone ||
+      payload.phone_number ||
+      null;
+
+    if (!possible) {
+      console.error("❌ No mobile/whatsapp/phone number found in payload.");
+      return res
+        .status(400)
+        .send({ error: "Missing mobile/whatsapp/phone in webhook data." });
+    }
+
+    const mobile = possible.toString().replace(/\D/g, "");
+    console.log("📱 Mapped WhatsApp Mobile Number →", mobile);
+
+    // Force switch session to incoming flow/node (important)
+    if (!sessions[mobile]) {
+      sessions[mobile] = { currentFlow: flow, currentNode: node, data: {} };
+    } else {
+      sessions[mobile].currentFlow = flow;
+      sessions[mobile].currentNode = node;
+    }
+
+    // Merge payload data into session
+    sessions[mobile].data = { ...sessions[mobile].data, ...payload };
+
+    console.log(
+      "🧭 Session switched → FLOW:",
+      sessions[mobile].currentFlow,
+      "NODE:",
+      sessions[mobile].currentNode,
+    );
+    console.log("🛠️ Dynamic Fields Created:");
+    Object.entries(payload).forEach(([k, v]) => console.log(`   → ${k}: ${v}`));
+
+    // Move to next node automatically if configured
+    const nextNode = nodeData.next;
+    if (nextNode && flowData.nodes[nextNode]) {
+      sessions[mobile].currentNode = nextNode;
+      console.log("🔀 Moving to Next Node →", nextNode);
+      await handleNode(nextNode, mobile, sessions[mobile]);
+    } else {
+      console.log("⚠️ No next node configured for webhook node:", node);
+    }
+
+    return res.status(200).send({
+      status: "Webhook processed successfully ✅",
+      mobile,
+      nextNode: nextNode || null,
+      sessionData: sessions[mobile].data,
+    });
+  } catch (err) {
+    console.error("❌ Webhook Processing Error:", err.stack || err.message);
+    return res.status(500).send({ error: "Internal Server Error" });
+  }
+});
+
+// ==================== HANDLE INCOMING USER RESPONSES ====================
+async function handleIncoming(messages, from, flow, session) {
+  try {
+    const nodeId = session.currentNode;
+    const node = flow?.nodes?.[nodeId];
+    if (!node) {
+      console.warn(
+        `⚠️ Invalid node '${nodeId}' for flow '${session.currentFlow}'. Clearing session.`,
+      );
+      delete sessions[from];
+      return;
+    }
+
+    // ✅ Capture user phone & name here
+    const userName = messages.profile?.name || "";
+    session.data["USER_PHONE"] = from;
+    session.data["USER_NAME"] = userName;
+    let replyId = null;
+
+    let replyTitle = null;
+    let userText = null;
+    let flowResponse = null; // <-- will hold full flow response JSON when present
+
+    if (messages.type === "text") {
+      userText = messages.text.body.trim();
+    } else if (messages.type === "location") {
+      const loc = messages.location;
+      if (loc) {
+        session.data["user_location"] = {
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          address: loc.address || "",
+          name: loc.name || "",
+        };
+        console.log("📍 Location received:", session.data["user_location"]);
+        userText = "location_shared";
+      }
+    } else if (messages.type === "interactive") {
+      const itype = messages.interactive?.type;
+
+      if (itype === "list_reply") {
+        replyId = messages.interactive.list_reply.id;
+        replyTitle = messages.interactive.list_reply.title;
+      } else if (itype === "button_reply") {
+        replyId = messages.interactive.button_reply.id;
+        replyTitle = messages.interactive.button_reply.title;
+      } else if (itype === "flow_reply" && messages.interactive.flow_reply) {
+        // Cloud API flow submission
+        flowResponse = messages.interactive.flow_reply.response_json || {};
+        replyId = messages.interactive.flow_reply.id || null;
+        replyTitle = messages.interactive.flow_reply.title || null;
+      } else if (
+        itype === "flow_submission" &&
+        messages.interactive.flow_submission
+      ) {
+        // Some payloads use flow_submission
+        flowResponse = messages.interactive.flow_submission.response_json || {};
+      } else if (itype === "nfm_reply" && messages.interactive.nfm_reply) {
+        // Native flow message reply variant
+        flowResponse = messages.interactive.nfm_reply.response_json || {};
+      } else {
+        console.log("⚠️ Unsupported interactive subtype:", itype);
+      }
+
+      // If we got a flow response, stringify fallback for valueToSave (but store object below)
+      if (flowResponse && !userText) {
+        try {
+          userText = JSON.stringify(flowResponse);
+        } catch {
+          userText = "";
+        }
+      }
+    } else if (messages.type === "audio") {
+      try {
+        const mediaId = messages.audio.id;
+        console.log("🎧 Incoming audio media ID:", mediaId);
+
+        // Step 1: Get media URL from WhatsApp API
+        const mediaResp = await axios.get(
+          `https://graph.facebook.com/v17.0/${mediaId}`,
+          {
+            headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+          },
+        );
+
+        const mediaUrl = mediaResp.data.url;
+        console.log("🔗 WhatsApp Audio URL:", mediaUrl);
+
+        // Step 2: Download the audio file (binary)
+        const audioResp = await axios.get(mediaUrl, {
+          headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+          responseType: "arraybuffer",
+        });
+        // Ensure directory exists
+        const saveDir = path.join(__dirname, "media", "audio");
+        if (!fs.existsSync(saveDir)) {
+          fs.mkdirSync(saveDir, { recursive: true });
+        }
+        // Save file
+        const fileName = `audio_${Date.now()}.ogg`;
+        const savePath = path.join(saveDir, fileName);
+        fs.writeFileSync(savePath, audioResp.data);
+
+        console.log("✅ Audio saved:", savePath);
+
+        // 3. Build public URL from your server
+        const publicUrl = `${serverURL}/media/audio/${fileName}`;
+
+        // Save in session
+        // ✅ Save into session so it can be used later
+        session.data[node.save_as] = publicUrl;
+
+        console.log("💾 Saved to session.data['USER_AUDIO'] =", publicUrl);
+        console.log(`🎧 Audio saved: ${savePath}`);
+        console.log(`🌍 Public URL: ${publicUrl}`);
+      } catch (err) {
+        console.error(
+          "❌ Audio download failed:",
+          err.response?.data || err.message,
+        );
+        userText = "[Audio failed]";
+      }
+    } else {
+      console.log("⚠️ Unsupported incoming message type:", messages.type);
+      return;
+    }
+
+    // Prefer machine IDs, then titles, then raw text (or flow JSON string)
+    let valueToSave = replyId || replyTitle || userText || "";
+
+    // If this node wants to save the answer
+    console.log(
+      `💾 check1 full flow response to session.data['${node.save_as}'] =`,
+      flowResponse,
+    );
+    if (node.save_as) {
+      console.log(
+        `💾 check here full flow response to session.data['${node.save_as}'] =`,
+        flowResponse,
+      );
+      // If it's a flow response, save the FULL OBJECT (not string)
+      if (flowResponse && typeof flowResponse === "object") {
+        // Save entire flow response object under the node.save_as key
+        session.data[node.save_as] = flowResponse;
+        console.log(
+          `💾 Saved full flow response to session.data['${node.save_as}'] =`,
+          flowResponse,
+        );
+
+        // ALSO map fields from flowResponse to each save_as defined in the flow nodes
+        // WITHOUT overwriting the full object; these are separate variables for convenience.
+        const responseFields = flowResponse.response_json || flowResponse;
+        Object.entries(flow.nodes).forEach(([nKey, nDef]) => {
+          if (!nDef || !nDef.save_as) return;
+          // find a key in responseFields that likely maps to this save_as
+          const foundKey = Object.keys(responseFields).find((k) =>
+            k.toLowerCase().includes(nDef.save_as.toLowerCase()),
+          );
+          if (foundKey) {
+            session.data[nDef.save_as] = responseFields[foundKey];
+          }
+        });
+
+        // Dynamically save all fields inside session.data
+        Object.entries(flowResponse).forEach(([key, value]) => {
+          sessions[from].data[key] = value;
+        });
+
+        console.log("🎯 Captured Dynamic Fields:", sessions[from].data);
+
+        // Optional: echo the captured fields back to the user for confirmation
+        if (node.echo_response === true) {
+          const summary = kvSummary(responseFields);
+          await sendMessage(from, `✅ Received your details:\n${summary}`);
+        }
+      } else if (flowResponse && typeof flowResponse === "string") {
+        // ✅ Handle unexpected JSON string
+        try {
+          const parsedResponse = JSON.parse(flowResponse);
+          session.data[node.save_as] = parsedResponse;
+          console.log(`💾 Parsed and saved flow response =`, parsedResponse);
+        } catch (err) {
+          console.error("❌ Failed to parse flowResponse string:", err);
+        }
+      } else {
+        if (messages.type === "audio") {
+          // Already saved in audio handler → don't overwrite
+          //session.data[node.save_as] = publicUrl;
+          console.log("⚡ Skipping overwrite for USER_AUDIO (already saved).");
+          console.log(
+            `💾 Audo url Saved to session.data['${node.save_as}'] =`,
+            valueToSave,
+          );
+        } else {
+          session.data[node.save_as] = valueToSave;
+          console.log(
+            `💾 Saved to session.data['${node.save_as}'] =`,
+            valueToSave,
+          );
+        }
+      }
+    }
+
+    // Work out where to go next
+    let nextNode = null;
+
+    // 1) next_map (try id/title/text in a case-insensitive way)
+    if (node.next_map) {
+      const lowerMap = {};
+      for (const [k, v] of Object.entries(node.next_map))
+        lowerMap[k.toLowerCase()] = v;
+
+      if (replyId && node.next_map[replyId]) nextNode = node.next_map[replyId];
+      else if (replyTitle && node.next_map[replyTitle])
+        nextNode = node.next_map[replyTitle];
+      else if (replyTitle && lowerMap[replyTitle.toLowerCase()])
+        nextNode = lowerMap[replyTitle.toLowerCase()];
+      else if (
+        userText &&
+        typeof userText === "string" &&
+        lowerMap[userText.toLowerCase()]
+      ) {
+        nextNode = lowerMap[userText.toLowerCase()];
+      }
+    }
+
+    // 2) Static next
+    if (!nextNode && node.next) nextNode = node.next;
+
+    if (nextNode && flow.nodes[nextNode]) {
+      session.currentNode = nextNode;
+      console.log(`🔀 Advancing to next node '${nextNode}' for ${from}`);
+      await handleNode(nextNode, from, session);
+    } else {
+      console.log(from, "✅ Flow ended (no next node). Clearing session.");
+      delete sessions[from];
+    }
+  } catch (err) {
+    console.error("handleIncoming Error:", err.stack || err.message);
+    delete sessions[from];
+  }
+}
+
+// ==================== HANDLE NODE (send/wait/auto-advance for api) ====================
+async function handleNode(nodeId, to, session) {
+  const flow = flowConfig[session.currentFlow];
+  const node = flow?.nodes?.[nodeId];
+
+  if (!node) {
+    console.warn(
+      `⚠️ Node '${nodeId}' not found in flow '${session.currentFlow}'. Ending session.`,
+    );
+    delete sessions[to];
+    return;
+  }
+
+  console.log(`➡️ Handling node '${nodeId}' (type: ${node.type}) for ${to}`);
+
+  switch (node.type) {
+    case "message":
+      // Send message and WAIT for user's reply (do NOT auto-advance)
+      await sendMessage(to, substitute(node.caption, session.data));
+      session.currentNode = nodeId; // stay here until user replies
+      break;
+
+    case "list_message":
+      // Send interactive list and WAIT
+      await sendList(to, node, session.data);
+      session.currentNode = nodeId;
+      break;
+
+    case "button_message":
+      // Send reply buttons and WAIT
+      await sendReplyButtons(to, node, session.data);
+      session.currentNode = nodeId;
+      break;
+
+    case "api":
+      // Call API, save result, then auto-advance
+      await handleApiNode(node, to, session);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        // allow next node to run (if next is message, it will send and WAIT)
+        await handleNode(node.next, to, session);
+      } else {
+        // no next => end session
+        console.log(
+          "API node finished and no next node. Ending session for",
+          to,
+        );
+        delete sessions[to];
+      }
+      break;
+
+    case "google_sheet":
+      // Save to sheet (buffer), then auto-advance if next exists
+      await handleGoogleSheetNode(node, to, session);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        await handleNode(node.next, to, session);
+      } else {
+        delete sessions[to];
+      }
+      break;
+
+    case "webhook":
+      // Wait until an external app calls /custom-webhook/:flow/:node
+      console.log(
+        `⏸ Waiting for external webhook to trigger node '${nodeId}' for ${to}`,
+      );
+      session.currentNode = nodeId;
+      break;
+    case "flow_message":
+      // Send WhatsApp Interactive Flow Message
+      await sendFlowMessage(to, node, session.data);
+      session.currentNode = nodeId; // Wait for user's reply
+      break;
+    case "image":
+      await sendMedia(to, "image", node, session.data);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        await handleNode(node.next, to, session);
+      } else delete sessions[to];
+      break;
+
+    case "video":
+      await sendMedia(to, "video", node, session.data);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        await handleNode(node.next, to, session);
+      } else delete sessions[to];
+      break;
+
+    case "audio":
+      await sendMedia(to, "audio", node, session.data);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        await handleNode(node.next, to, session);
+      } else delete sessions[to];
+      break;
+
+    case "document":
+      await sendMedia(to, "document", node, session.data);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        await handleNode(node.next, to, session);
+      } else delete sessions[to];
+      break;
+
+    case "location":
+      await sendLocation(to, node, session.data);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        await handleNode(node.next, to, session);
+      } else delete sessions[to];
+      break;
+
+    case "template":
+      await sendTemplate(to, node, session.data);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        await handleNode(node.next, to, session);
+      } else delete sessions[to];
+      break;
+
+    case "location_request":
+      await sendLocationRequest(to, node, session.data);
+      session.currentNode = nodeId;
+      break;
+
+    case "cta_url":
+      await sendCtaUrlMessage(to, node, session.data);
+      session.currentNode = nodeId;
+      break;
+
+    case "template":
+      await sendTemplateMessage(to, node, session.data);
+      if (node.next && flow.nodes[node.next]) {
+        session.currentNode = node.next;
+        await handleNode(node.next, to, session);
+      } else {
+        delete sessions[to];
+      }
+      break;
+
+    case "end":
+      console.log("🟢 Reached end node. Ending session for", to);
+      delete sessions[to];
+      break;
+
+    default:
+      console.warn("⚠️ Unknown node type:", node.type, "ending session.");
+      delete sessions[to];
+      break;
+  }
+}
+
+// ==================== API NODE ====================
+async function handleApiNode(node, to, session) {
+  try {
+    const data = session.data || {};
+    const url = substitute(node.url, data);
+    const method = (node.method || "POST").toUpperCase();
+    const headers = deepSubstitute(node.headers || {}, data);
+    const body = deepSubstitute(node.body || {}, data);
+
+    console.log(
+      "📡 API Node call:",
+      method,
+      url,
+      "body:",
+      JSON.stringify(body),
+    );
+
+    const response = await axios({ url, method, headers, data: body });
+    const saveKey = node.save_as || "api_response";
+    session.data[saveKey] = response.data;
+    console.log(to, "📡 API call success ✅ saved as", saveKey);
+  } catch (err) {
+    console.error("❌ API Error:", err.response?.data || err.message);
+    const saveKey = node.save_as || "api_response";
+    session.data[saveKey] = { error: err.response?.data || err.message };
+  }
+}
+
+// ==================== GOOGLE SHEET NODE ====================
+async function handleGoogleSheetNode(node, to, session) {
+  try {
+    const mapping = deepSubstitute(node.mapping || {}, session.data);
+    const values = Object.values(mapping);
+    sheetBuffer.push(values);
+    lastSpreadsheetId = node.spreadsheet_id;
+    lastRange = node.range;
+    console.log(to, "📊 Data queued for Google Sheet ✅", values);
+    if (sheetBuffer.length >= (node.flush_threshold || 10)) {
+      await flushGoogleSheet(lastSpreadsheetId, lastRange);
+    }
+  } catch (err) {
+    console.error("❌ Google Sheet Error:", err.message);
+    session.data[node.save_as || "sheet_error"] = err.message;
+  }
+}
+
+async function flushGoogleSheet(spreadsheetId, range) {
+  if (sheetBuffer.length === 0) return;
+  if (!spreadsheetId || !range) return;
+  try {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: sheetBuffer },
+    });
+    console.log("✅ Flushed", sheetBuffer.length, "rows to Google Sheet");
+    sheetBuffer = [];
+  } catch (err) {
+    console.error("❌ Flush Error:", err.response?.data || err.message);
+  }
+}
+setInterval(() => {
+  if (sheetBuffer.length > 0) flushGoogleSheet(lastSpreadsheetId, lastRange);
+}, 10000);
+
+// ==================== WHATSAPP HELPERS ====================
+async function sendMessage(to, body) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body },
+    };
+    const resp = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      {
+        headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+      },
+    );
+    console.log("✅ Text message sent:", resp.data);
+    return resp.data;
+  } catch (err) {
+    console.error("❌ sendMessage Error:", err.response?.data || err.message);
+  }
+}
+
+async function sendList(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "list",
+        header: { type: "text", text: node.header || "Choose an option" },
+        body: { text: substitute(node.caption, data) },
+        footer: { text: node.footer || "Select one" },
+        action: {
+          button: node.action_button || "Options",
+          sections: [
+            {
+              title: node.section_title || "Available Choices",
+              rows: node.options.map((opt) => ({
+                id: opt.id,
+                title: substitute(opt.title, data),
+                description: substitute(opt.description || "", data),
+              })),
+            },
+          ],
+        },
+      },
+    };
+
+    console.log(
+      "📤 Final WhatsApp List Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      {
+        headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+      },
+    );
+    console.log("✅ List message sent successfully:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ WhatsApp List API Error:",
+      err.response?.data || err.message,
+    );
+  }
+}
+
+async function sendReplyButtons(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        header: {
+          type: "text",
+          text: substitute(node.header || "Confirmation", data),
+        },
+        body: { text: substitute(node.caption, data) },
+        footer: { text: substitute(node.footer || "", data) },
+        action: {
+          buttons: node.buttons.map((btn) => ({
+            type: "reply",
+            reply: { id: btn.id, title: substitute(btn.title, data) },
+          })),
+        },
+      },
+    };
+
+    console.log(
+      "📤 Final WhatsApp Button Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      {
+        headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+      },
+    );
+    console.log("✅ Button message sent successfully:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ WhatsApp Button API Error:",
+      err.response?.data || err.message,
+    );
+  }
+}
+
+async function sendFlowMessage(to, node, data) {
+  try {
+    const payload = {
+      recipient_type: "individual",
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "flow",
+        header: {
+          type: "text",
+          text: substitute(node.header || "Flow Header", data),
+        },
+        body: {
+          text: substitute(node.body || "Flow Body", data),
+        },
+        footer: {
+          text: substitute(node.footer || "", data),
+        },
+        action: {
+          name: "flow",
+          parameters: {
+            flow_message_version: "3",
+            flow_token: node.flow_token,
+            flow_id: node.flow_id,
+            flow_cta: substitute(node.flow_cta || "Submit", data),
+            flow_action: "navigate",
+            flow_action_payload: {
+              screen: node.screen,
+              data: deepSubstitute(node.flow_data || {}, data),
+            },
+          },
+        },
+      },
+    };
+
+    console.log(
+      "📤 Final WhatsApp Flow Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      {
+        headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
+      },
+    );
+
+    console.log("✅ Flow message sent successfully:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ WhatsApp Flow API Error:",
+      err.response?.data || err.message,
+    );
+  }
+}
+
+async function sendMedia(to, type, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type,
+      [type]: {
+        link: substitute(node.link, data),
+      },
+    };
+    if (node.caption) payload[type].caption = substitute(node.caption, data);
+    if (type === "document" && node.filename)
+      payload.document.filename = substitute(node.filename, data);
+
+    console.log(
+      `📤 Sending ${type} payload:`,
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log(`✅ ${type} sent successfully:`, response.data);
+    return response.data;
+  } catch (err) {
+    console.error(`❌ ${type} send error:`, err.response?.data || err.message);
+  }
+}
+
+async function sendLocation(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "location",
+      location: {
+        latitude: substitute(node.latitude, data),
+        longitude: substitute(node.longitude, data),
+        name: substitute(node.name || "", data),
+        address: substitute(node.address || "", data),
+      },
+    };
+    console.log("📤 Sending location:", JSON.stringify(payload, null, 2));
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ Location sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error("❌ Location error:", err.response?.data || err.message);
+  }
+}
+
+async function sendTemplate(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: substitute(node.template_name, data),
+        language: { code: node.language || "en_US" },
+        components: deepSubstitute(node.components || [], data),
+      },
+    };
+    console.log("📤 Sending template:", JSON.stringify(payload, null, 2));
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ Template sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error("❌ Template error:", err.response?.data || err.message);
+  }
+}
+
+async function sendLocationRequest(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "location_request_message",
+        body: {
+          text: substitute(node.body || "📍 Please share your location", data),
+        },
+        action: { name: "send_location" },
+      },
+    };
+    console.log(
+      "📤 Sending Location Request Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ Location request sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ sendLocationRequest Error:",
+      err.response?.data || err.message,
+    );
+  }
+}
+
+async function sendCtaUrlMessage(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "cta_url",
+        header: node.header ? deepSubstitute(node.header, data) : undefined,
+        body: { text: substitute(node.body, data) },
+        action: {
+          name: "cta_url",
+          parameters: {
+            display_text: substitute(node.button_text || "Open Link", data),
+            url: substitute(node.url, data),
+          },
+        },
+        footer: node.footer
+          ? { text: substitute(node.footer, data) }
+          : undefined,
+      },
+    };
+    console.log(
+      "📤 Sending CTA URL Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ CTA URL message sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ sendCtaUrlMessage Error:",
+      err.response?.data || err.message,
+    );
+  }
+}
+
+async function sendTemplateMessage(to, node, data) {
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "template",
+      template: deepSubstitute(
+        {
+          name: node.template_name,
+          language: { code: node.language || "en_US" },
+          components: node.components || [],
+        },
+        data,
+      ),
+    };
+    console.log(
+      "📤 Sending Template Payload:",
+      JSON.stringify(payload, null, 2),
+    );
+    const response = await axios.post(
+      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` } },
+    );
+    console.log("✅ Template message sent:", response.data);
+    return response.data;
+  } catch (err) {
+    console.error(
+      "❌ sendTemplateMessage Error:",
+      err.response?.data || err.message,
+    );
+  }
+}
+
+// ==================== TEMPLATING HELPERS ====================
+// substitute() and deepSubstitute() are defined above
+
+function kvSummary(obj) {
+  try {
+    if (!obj || typeof obj !== "object") return "";
+    return Object.entries(obj)
+      .map(
+        ([k, v]) =>
+          `• ${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`,
+      )
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
+//==============Current/Date and Time===============
+const moment = require("moment-timezone");
+
+global.getCurrentDateTime = () => {
+  const now = moment().tz("Asia/Kolkata"); // IST timezone
+  return {
+    CURRENT_DATE: now.format("DD/MM/YYYY"), // 01/09/2025
+    CURRENT_TIME: now.format("HH:mm:ss"), // 20:55:30
+  };
+};
+
+// ==================== START SERVER ====================
+
+// Serve media files as public URLs  audito file
+app.use("/media", express.static(path.join(__dirname, "media")));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
