@@ -213,12 +213,18 @@ class ApiClient {
 
   // Mock auth methods (no real auth needed for demo)
   auth = {
-    getSession: async () => ({ 
-      data: { 
-        session: { 
-          user: { id: this.userId, email: 'demo@example.com' } 
-        } 
-      } 
+    getSession: async () => ({
+      data: {
+        session: {
+          user: { id: this.userId, email: 'demo@example.com' }
+        }
+      }
+    }),
+    getUser: async () => ({
+      data: {
+        user: { id: this.userId, email: 'demo@example.com' }
+      },
+      error: null
     }),
     onAuthStateChange: (callback: any) => {
       setTimeout(() => {
