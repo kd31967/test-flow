@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import FlowList from './components/FlowList';
 import NewFlowBuilder from './components/NewFlowBuilder';
 import Settings from './components/Settings';
-import Auth from './components/Auth';
 import { supabase } from './lib/api';
 import { setupSystem, SetupStatus } from './lib/setupSystem';
 
@@ -130,10 +129,6 @@ function App() {
         </div>
       </div>
     );
-  }
-
-  if (!session) {
-    return <Auth onAuthSuccess={() => setLoading(false)} />;
   }
 
   if (currentView === 'builder') {

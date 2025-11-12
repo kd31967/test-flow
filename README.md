@@ -1,328 +1,465 @@
-# WhatsApp Flow Builder
+# WhatsApp Flow Builder AI
 
-A complete visual flow builder for WhatsApp Business automation. Create conversational workflows with a drag-and-drop interface, no coding required.
+A visual no-code platform for building WhatsApp automation flows with AI integration, custom webhooks, and real-time flow execution.
 
-![Status](https://img.shields.io/badge/status-production--ready-green)
-![Auth](https://img.shields.io/badge/auth-enabled-blue)
-![Database](https://img.shields.io/badge/database-supabase-orange)
-![Platform](https://img.shields.io/badge/platform-whatsapp-brightgreen)
+## 🚀 Features
 
-## ✨ Features
+- **Visual Flow Builder** - Drag-and-drop interface for building automation flows
+- **WhatsApp Integration** - Send messages, buttons, media, and interactive content
+- **Custom Webhooks** - Capture external data and trigger flows
+- **AI Completion** - Integrate AI-powered responses
+- **Variable System** - Dynamic content with variable substitution
+- **Real-time Execution** - Process messages and execute flows instantly
+- **Database Storage** - All data persists in Supabase
 
-### Multi-Flow Management
-- ✅ Create unlimited flows
-- ✅ Draft and Active status for each flow
-- ✅ Multiple active flows simultaneously
-- ✅ Duplicate, export, and delete flows
-- ✅ Custom trigger keywords per flow
-
-### Visual Flow Builder
-- ✅ 18+ node types
-- ✅ Drag-and-drop interface
-- ✅ Real-time configuration
-- ✅ Variable substitution system
-- ✅ All WhatsApp message types supported
-
-### Authentication & Security
-- ✅ User sign up and sign in
-- ✅ Secure credential storage
-- ✅ Row Level Security (RLS)
-- ✅ Per-user flow isolation
-
-### WhatsApp Integration
-- ✅ Cloud API webhook handler
-- ✅ Session management
-- ✅ Variable system ({{USER_NAME}}, etc.)
-- ✅ Support for text, media, buttons, lists
-- ✅ Automatic flow execution
-
-## 🚀 Quick Start
-
-### 1. Sign Up
-```
-1. Open the application
-2. Click "Sign Up"
-3. Enter email and password
-4. Sign in with your credentials
-```
-
-### 2. Configure WhatsApp
-```
-1. Click Settings (top right)
-2. Enter Phone Number ID (from Meta)
-3. Enter Access Token (from Meta)
-4. Save settings
-```
-
-### 3. Create Your First Flow
-```
-1. Click "Create New Flow"
-2. Add "On Message" trigger node
-3. Set keywords: hello, hi, start
-4. Add "Send Message" node
-5. Write your greeting message
-6. Connect nodes
-7. Toggle to Active
-8. Save
-```
-
-### 4. Test
-```
-1. Send "hello" to your WhatsApp Business number
-2. Receive automated reply
-3. Success! 🎉
-```
-
-**📖 See [QUICK_START.md](./QUICK_START.md) for detailed step-by-step guide**
-
-## 📚 Documentation
-
-| File | Description |
-|------|-------------|
-| [QUICK_START.md](./QUICK_START.md) | Complete setup guide with examples |
-| [FLOW_EXAMPLES.md](./FLOW_EXAMPLES.md) | Flow patterns and best practices |
-| [WEBHOOK_SETUP.md](./WEBHOOK_SETUP.md) | Technical documentation |
-
-## 🎯 Use Cases
-
-### Customer Support
-- Auto-respond to common questions
-- Route inquiries to departments
-- Collect customer feedback
-
-### Lead Generation
-- Capture contact information
-- Qualify leads with questions
-- Send product information
-
-### Notifications
-- Order confirmations
-- Appointment reminders
-- Status updates
-
-### E-commerce
-- Product catalogs
-- Order placement
-- Payment confirmation
-
-## 🛠️ Tech Stack
-
-- **Frontend:** React + TypeScript + Tailwind CSS
-- **Backend:** Supabase Edge Functions (Deno)
-- **Database:** Supabase PostgreSQL
-- **Auth:** Supabase Auth
-- **API:** WhatsApp Cloud API
-
-## 🏗️ Architecture
+## 📁 Project Structure
 
 ```
-┌─────────────────┐
-│   User (Web)    │
-└────────┬────────┘
-         │
-    ┌────▼─────┐
-    │  React   │
-    │   App    │
-    └────┬─────┘
-         │
-    ┌────▼──────────┐
-    │   Supabase    │
-    │   Database    │
-    ├───────────────┤
-    │ • flows       │
-    │ • profiles    │
-    │ • executions  │
-    └────┬──────────┘
-         │
-    ┌────▼──────────┐
-    │ Edge Function │
-    │   (Webhook)   │
-    └────┬──────────┘
-         │
-    ┌────▼──────────┐
-    │   WhatsApp    │
-    │   Cloud API   │
-    └───────────────┘
+whatsapp-flow-builder/
+├── client/                      # Frontend React Application
+│   └── src/
+│       ├── components/          # React Components
+│       │   ├── Canvas.tsx              # Flow canvas for node placement
+│       │   ├── ConfigPanel.tsx         # Node configuration panel
+│       │   ├── FlowList.tsx            # List and manage flows
+│       │   ├── NewFlowBuilder.tsx      # Main flow builder component
+│       │   ├── NodePalette.tsx         # Available node types
+│       │   ├── Settings.tsx            # WhatsApp credentials
+│       │   ├── Sidebar.tsx             # Navigation sidebar
+│       │   └── [NodeConfigs]/          # Configuration components for each node type
+│       ├── lib/                 # Utility Libraries
+│       │   ├── api.ts                  # Supabase client
+│       │   ├── flowExecutor.ts         # Client-side flow execution
+│       │   ├── setupSystem.ts          # System initialization
+│       │   └── variableSystem.ts       # Variable management
+│       ├── types/               # TypeScript Type Definitions
+│       └── App.tsx              # Main application component
+│
+├── supabase/                    # Supabase Configuration
+│   ├── functions/               # Edge Functions (Server-side)
+│   │   ├── whatsapp-webhook/          # WhatsApp message webhook
+│   │   └── custom-webhook/            # Custom HTTP webhook handler
+│   └── migrations/              # Database Migrations
+│       └── *.sql                      # SQL migration files
+│
+├── shared/                      # Shared Code
+│   └── schema.ts                # Database schema & types (Drizzle ORM)
+│
+└── [Config Files]               # Configuration
+    ├── package.json             # Dependencies
+    ├── vite.config.ts           # Vite bundler config
+    ├── tailwind.config.js       # Tailwind CSS config
+    └── tsconfig.json            # TypeScript config
 ```
 
-## 📦 Database Schema
+## 🗄️ Database Schema
 
-### flows
-Stores all flow configurations
-```sql
-- id (uuid)
-- user_id (uuid)
-- name (text)
-- description (text)
-- status ('draft' | 'active')
-- config (jsonb)
-- trigger_keywords (text[])
-- created_at (timestamp)
+All data is stored in Supabase PostgreSQL database:
+
+### Core Tables
+
+#### `flows`
+Stores flow configurations and metadata
+- `id` (uuid) - Primary key
+- `user_id` (text) - Owner identifier
+- `name` (text) - Flow name
+- `description` (text) - Flow description
+- `status` (text) - draft | active | paused | archived
+- `trigger_keywords` (jsonb) - Keywords that trigger the flow
+- `config` (jsonb) - Complete flow configuration (nodes, connections)
+- `category` (text) - Flow category
+- `metadata` (jsonb) - Additional metadata
+- `created_at`, `updated_at` (timestamptz) - Timestamps
+
+#### `flow_nodes`
+Individual node definitions (if needed for advanced queries)
+- `id` (uuid) - Primary key
+- `flow_id` (uuid) - References flows
+- `node_id` (text) - Node identifier
+- `node_type` (text) - Type of node
+- `config` (jsonb) - Node configuration
+- `position` (jsonb) - Canvas position {x, y}
+
+#### `flow_executions`
+Active and completed flow sessions
+- `id` (uuid) - Primary key
+- `flow_id` (uuid) - References flows
+- `user_phone` (text) - WhatsApp phone number
+- `status` (text) - running | completed | failed | timeout
+- `current_node` (text) - Current execution position
+- `variables` (jsonb) - Runtime variables
+- `started_at`, `completed_at` (timestamptz) - Execution timestamps
+
+#### `webhook_logs`
+Logs all webhook activity for debugging
+- `id` (uuid) - Primary key
+- `method` (text) - HTTP method
+- `from_phone` (text) - Sender phone (WhatsApp)
+- `message_type` (text) - Message type
+- `message_body` (text) - Message content
+- `webhook_payload` (jsonb) - Complete webhook data
+- `flow_matched` (boolean) - Whether a flow was matched
+- `flow_id` (uuid) - Matched flow
+- `execution_id` (uuid) - Flow execution
+- `whatsapp_response` (jsonb) - Response from WhatsApp API
+- `error_message` (text) - Any errors
+- `processing_time_ms` (integer) - Processing duration
+- `created_at` (timestamptz) - Log timestamp
+
+#### `webhook_executions`
+Custom webhook trigger data
+- `id` (uuid) - Primary key
+- `flow_id` (uuid) - References flows
+- `node_id` (text) - Webhook node
+- `request_data` (jsonb) - Captured request data
+- `status` (text) - pending | processing | completed | failed
+- `result` (jsonb) - Execution result
+- `error` (text) - Error message if failed
+- `created_at`, `updated_at` (timestamptz) - Timestamps
+
+#### `user_profiles`
+User settings and WhatsApp credentials
+- `id` (text) - Primary key (user identifier)
+- `phone_number_id` (text) - WhatsApp Phone Number ID
+- `whatsapp_access_token` (text) - WhatsApp Access Token
+- `business_name` (text) - Business name
+- `whatsapp_business_id` (text) - Business Account ID
+- `whatsapp_app_id` (text) - App ID
+- `subscription_tier` (text) - free | pro | enterprise
+- `settings` (jsonb) - User preferences
+- `created_at` (timestamptz) - Account creation
+
+### Additional Tables
+
+- `flow_analytics` - Flow metrics and analytics
+- `templates` - Pre-built flow templates
+
+## 🔧 Edge Functions (Server-side)
+
+### `whatsapp-webhook`
+**Purpose:** Receives and processes WhatsApp messages
+
+**Location:** `supabase/functions/whatsapp-webhook/index.ts`
+
+**Endpoint:** `https://your-project.supabase.co/functions/v1/whatsapp-webhook`
+
+**Responsibilities:**
+- Receives WhatsApp webhook events (GET for verification, POST for messages)
+- Matches incoming messages to active flows using trigger keywords
+- Creates or continues flow executions
+- Executes flow nodes (send message, buttons, media, etc.)
+- Manages session state and variables
+- Logs all activity to webhook_logs table
+
+**Key Functions:**
+- `matchFlowTrigger()` - Matches message to flow
+- `startNewFlow()` - Initializes new flow execution
+- `continueFlow()` - Resumes existing flow
+- `executeNode()` - Processes individual nodes
+- `sendWhatsAppMessage()` - Sends text messages
+- `sendWhatsAppMedia()` - Sends images/videos/documents
+- `sendWhatsAppInteractive()` - Sends buttons/lists
+
+### `custom-webhook`
+**Purpose:** Captures external HTTP requests and triggers flows
+
+**Location:** `supabase/functions/custom-webhook/index.ts`
+
+**Endpoint:** `https://your-project.supabase.co/functions/v1/custom-webhook/:flow_id/:node_id`
+
+**Responsibilities:**
+- Accepts HTTP requests (GET, POST, PUT, DELETE)
+- Validates flow and node existence
+- Captures all request data (body, query params, headers)
+- Generates webhook variables for use in flows
+- Creates webhook execution records
+- Logs webhook calls
+
+**Captured Data:**
+- `webhook.method` - HTTP method
+- `webhook.body.{field}` - Request body fields
+- `webhook.query.{param}` - Query parameters
+- `webhook.header.{name}` - Request headers
+
+### Other Edge Functions
+
+- `ai-completion` - AI-powered text generation
+- `database-query` - Database operations
+- `send-email` - Email notifications
+- `test-http-api` - HTTP API testing
+
+## 🎨 UI Components
+
+### Core Components
+
+#### `NewFlowBuilder` (`client/src/components/NewFlowBuilder.tsx`)
+Main flow builder interface
+- Manages flow state (nodes, connections)
+- Handles save/load operations
+- Coordinates Canvas, Sidebar, and ConfigPanel
+
+#### `Canvas` (`client/src/components/Canvas.tsx`)
+Visual canvas for placing and connecting nodes
+- Drag-and-drop node placement
+- Visual connection lines between nodes
+- Pan and zoom functionality
+- Connection creation and deletion
+
+#### `Sidebar` (`client/src/components/Sidebar.tsx`)
+Node palette and available node types
+- Triggers: On Message, Catch Raw Webhook
+- Actions: Send Message, Send Button, Send Media
+- Logic: Wait for Reply, Transform Data
+- Integration: HTTP API, Database Query, AI Completion
+
+#### `ConfigPanel` (`client/src/components/ConfigPanel.tsx`)
+Node configuration interface
+- Dynamically loads configuration component based on node type
+- Provides variable autocomplete
+- Validates configuration before saving
+
+#### `Settings` (`client/src/components/Settings.tsx`)
+WhatsApp credentials management
+- Phone Number ID input
+- Access Token input (password field)
+- Saves to user_profiles table
+
+#### `FlowList` (`client/src/components/FlowList.tsx`)
+Flow management interface
+- Lists all saved flows
+- Create new flow
+- Edit existing flow
+- Delete flow
+- Import/Export flows
+
+### Node Configuration Components
+
+Each node type has its own configuration component:
+
+- `SendButtonConfig` - Interactive buttons with headers
+- `WebhookConfig` - Custom webhook settings
+- `HttpApiConfig` - HTTP request configuration
+- `AICompletionConfig` - AI prompt configuration
+- `DatabaseQueryConfig` - Database query builder
+- `EmailConfig` - Email configuration
+- `GoogleSheetsConfig` - Sheets integration
+- `TransformConfig` - Data transformation
+
+### Utility Components
+
+- `VariableAutocomplete` - Suggests available variables
+- `VariableInput` - Text input with variable support
+- `NodeConfig` - Generic node configuration wrapper
+
+## 🔑 Environment Variables
+
+Create a `.env` file in the project root:
+
+```env
+# Supabase Configuration
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+
+# Database URL (optional - for direct access if needed)
+DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
 ```
 
-### user_profiles
-User settings and credentials
-```sql
-- id (uuid)
-- whatsapp_app_id (text)
-- whatsapp_access_token (text)
-- settings (jsonb)
-```
+## 🛠️ Setup Instructions
 
-### flow_executions
-Active conversation sessions
-```sql
-- id (uuid)
-- flow_id (uuid)
-- user_phone (text)
-- current_node (text)
-- variables (jsonb)
-- status ('running' | 'completed')
-```
+### 1. Install Dependencies
 
-## 🎨 Node Types
-
-### Triggers
-- **On Message** - Start flow on keyword match
-- **Catch Webhook** - Trigger from external API
-
-### Messages
-- **Send Message** - Plain text messages
-- **Send Media** - Images, videos, audio, documents
-- **Send Button** - Interactive reply buttons
-- **Send List** - Dropdown selection list
-- **Send Template** - WhatsApp templates
-
-### Questions
-- **Ask Question** - Capture user input
-- **Wait for Reply** - Pause until response
-
-### Logic
-- **Condition** - Branch based on variables
-- **Delay** - Wait before continuing
-- **Stop Chatbot** - End conversation
-
-### Integrations
-- **HTTP** - Call external APIs
-- **Google Sheets** - Save to spreadsheet
-- **AI Agent** - OpenAI integration (coming soon)
-
-## 🔐 Security
-
-- ✅ User authentication required
-- ✅ Row Level Security (RLS) on all tables
-- ✅ Credentials encrypted in database
-- ✅ API tokens never exposed to client
-- ✅ CORS properly configured
-- ✅ Service role for Edge Functions
-
-## 🧪 Testing
-
-### Unit Testing
 ```bash
-npm run test
+npm install
 ```
 
-### Flow Testing
-1. Create a test flow with keyword "test"
-2. Toggle to Active and Save
-3. Send "test" to WhatsApp number
-4. Check Edge Function logs
-5. Verify response received
+### 2. Configure Environment
 
-### Debug Tools
-- Edge Function logs in Supabase Dashboard
-- `flow_executions` table for session state
-- Database queries for flow configuration
-- WhatsApp webhook logs in Meta portal
+Update `.env` file with your Supabase credentials.
 
-## 📊 Monitoring
+### 3. Database is Already Set Up
 
-### Check Active Sessions
-```sql
-SELECT * FROM flow_executions
-WHERE status = 'running'
-ORDER BY started_at DESC;
+The database tables are already created. All 8 tables exist in Supabase:
+- flows
+- flow_nodes
+- flow_executions
+- flow_analytics
+- user_profiles
+- templates
+- webhook_logs
+- webhook_executions
+
+### 4. Configure WhatsApp Business API
+
+1. Go to [Facebook Developers](https://developers.facebook.com/)
+2. Create a Business App with WhatsApp product
+3. Get your Phone Number ID and Access Token
+4. In the app, go to Settings and save these credentials
+
+### 5. Set Webhook URL in WhatsApp
+
+Configure the webhook URL in Meta Business Suite:
+```
+https://your-project.supabase.co/functions/v1/whatsapp-webhook
 ```
 
-### View Flow Analytics
-```sql
-SELECT
-  f.name,
-  COUNT(fe.id) as total_executions,
-  COUNT(CASE WHEN fe.status = 'completed' THEN 1 END) as completed
-FROM flows f
-LEFT JOIN flow_executions fe ON f.id = fe.flow_id
-GROUP BY f.name;
+Verify Token: `my-verify-token` (or change in edge function)
+
+### 6. Run Development Server
+
+```bash
+npm run dev
 ```
 
-### Edge Function Logs
-```
-Supabase Dashboard → Edge Functions → whatsapp-webhook → Logs
+Application will be available at `http://localhost:5000`
+
+### 7. Build for Production
+
+```bash
+npm run build
 ```
 
-## 🐛 Troubleshooting
+## 📖 Usage Guide
 
-### Flow Not Triggering
-- Verify flow is Active (not Draft)
+### Creating a Flow
+
+1. Click "New Flow" button
+2. Enter flow name and description
+3. Add trigger keywords (words that start the flow)
+4. Drag nodes from sidebar to canvas
+5. Connect nodes by clicking dots and dragging
+6. Configure each node by clicking on it
+7. Click "Save" to save to database
+
+### Available Nodes
+
+**Triggers:**
+- **On Message** - Triggers when keywords match
+- **Catch Raw Webhook** - Triggers from HTTP request
+
+**Actions:**
+- **Send Message** - Send text message
+- **Send Button** - Send interactive buttons
+- **Send Media** - Send image/video/document
+- **Wait for Reply** - Pause and wait for user input
+- **HTTP API** - Call external APIs
+- **Database Query** - Query database
+- **AI Completion** - Generate AI responses
+- **Email** - Send emails
+- **Transform Data** - Process data
+
+### Using Variables
+
+Variables can be used in any text field with `{{VARIABLE_NAME}}` syntax:
+
+**System Variables:**
+- `{{USER_PHONE}}` - User's phone number
+- `{{USER_NAME}}` - User's name
+- `{{TRIGGER_MESSAGE}}` - Initial message
+- `{{LAST_USER_MESSAGE}}` - Latest response
+
+**Custom Variables:**
+- Save user input with "Wait for Reply" node
+- Capture webhook data: `{{webhook.body.fieldname}}`
+- Use HTTP response: `{{api.response.data}}`
+
+### Testing Flows
+
+**WhatsApp Flow:**
+1. Save your flow with trigger keywords
+2. Set flow status to "Active"
+3. Send message to your WhatsApp number with trigger word
+4. Flow will execute automatically
+
+**Custom Webhook Flow:**
+1. Add "Catch Raw Webhook" node to flow
+2. Save the flow (note the flow ID)
+3. Send HTTP request to:
+   ```
+   POST https://your-project.supabase.co/functions/v1/custom-webhook/FLOW_ID/NODE_ID
+   ```
+4. Flow will execute with captured data
+
+### Debugging
+
+Check the `webhook_logs` table in Supabase to see:
+- All incoming messages
+- Matched flows
+- Execution status
+- WhatsApp API responses
+- Errors and processing time
+
+## 🔒 Security Notes
+
+- Access tokens are stored in database
+- Row Level Security (RLS) is enabled on all tables
+- Currently set to "allow all" for demo mode
+- For production, implement proper authentication and restrict RLS policies
+
+## 🚨 Troubleshooting
+
+**Flow not saving:**
+- Check browser console for errors
+- Verify Supabase connection
+- Ensure all required fields are filled
+
+**WhatsApp messages not working:**
+- Verify webhook URL is configured in Meta Business Suite
+- Check Phone Number ID and Access Token in Settings
+- Review webhook_logs table for errors
+- Ensure flow status is "Active"
 - Check trigger keywords match exactly
-- Confirm webhook configured in Meta
-- Verify credentials in Settings
 
-### Authentication Issues
-- Clear browser cache
-- Check Supabase Auth is enabled
-- Verify RLS policies are correct
+**Custom webhook not triggering:**
+- Verify flow ID and node ID in URL
+- Check webhook node exists in saved flow
+- Review webhook_executions table
+- Ensure flow is saved
 
-### Messages Not Sending
-- Validate Phone Number ID
-- Check Access Token expiry
-- Review Edge Function logs
-- Verify WhatsApp Business number active
+## 📝 Development
 
-## 🤝 Contributing
+### Tech Stack
 
-This is a complete production-ready system. To extend:
+**Frontend:**
+- React 18 + TypeScript
+- Vite (bundler)
+- Tailwind CSS
+- TanStack Query (data fetching)
+- Lucide React (icons)
 
-1. Add new node types in `src/types/flow.ts`
-2. Implement handlers in Edge Function
-3. Create configuration UI in `NodeConfig.tsx`
-4. Update database schema if needed
+**Backend:**
+- Supabase (database + edge functions)
+- PostgreSQL (database)
+- Drizzle ORM (schema management)
 
-## 📝 License
+**WhatsApp:**
+- WhatsApp Business API
+- Meta Graph API v21.0
 
-MIT License - feel free to use for commercial projects
+### Code Organization
 
-## 🌟 Features Coming Soon
+- `client/src/` - All frontend React code
+- `supabase/functions/` - Edge functions (server-side)
+- `supabase/migrations/` - Database migrations
+- `shared/` - Shared TypeScript types and schema
 
-- [ ] AI-powered responses with OpenAI
-- [ ] Advanced analytics dashboard
-- [ ] Flow templates library
-- [ ] A/B testing for flows
-- [ ] Team collaboration
-- [ ] Custom webhook integrations
-- [ ] Multi-language support
+### Adding a New Node Type
 
-## 💬 Support
+1. Add node type to `Sidebar.tsx`
+2. Create config component in `client/src/components/`
+3. Add case to `ConfigPanel.tsx`
+4. Implement execution in `supabase/functions/whatsapp-webhook/index.ts`
 
-- Check [QUICK_START.md](./QUICK_START.md) for setup help
-- Review [FLOW_EXAMPLES.md](./FLOW_EXAMPLES.md) for patterns
-- Monitor Edge Function logs for debugging
-- Check `flow_executions` table for session state
+## 📄 License
 
-## 🎉 Success Stories
+MIT License - Feel free to use for any purpose
 
-Use this system to:
-- ✅ Automate customer support 24/7
-- ✅ Generate and qualify leads
-- ✅ Send order confirmations
-- ✅ Collect customer feedback
-- ✅ Build interactive product catalogs
-- ✅ Schedule appointments
-- ✅ Send notifications and reminders
+## 🤝 Support
+
+For issues or questions, check:
+- `webhook_logs` table for webhook debugging
+- Browser console for frontend errors
+- Supabase logs for edge function errors
 
 ---
 
-**Built with ❤️ using React, TypeScript, Supabase, and WhatsApp Cloud API**
-
-Start building your WhatsApp automation today! 🚀
+Built with ❤️ using React, TypeScript, and Supabase
