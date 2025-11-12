@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Eye, EyeOff, Copy, CheckCircle } from 'lucide-react';
+import { supabase } from '../lib/api';
 
 interface SettingsProps {
   onClose: () => void;
@@ -25,15 +26,22 @@ export default function Settings({ onClose }: SettingsProps) {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch('/api/profile');
-      if (!response.ok) {
-        throw new Error('Failed to load settings');
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || 'demo-user';
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
       }
-      
-      const data = await response.json();
+
       if (data) {
-        setPhoneNumberId(data.phoneNumberId || '');
-        setAccessToken(data.whatsappAccessToken || '');
+        setPhoneNumberId(data.phone_number_id || '');
+        setAccessToken(data.whatsapp_access_token || '');
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -47,28 +55,45 @@ export default function Settings({ onClose }: SettingsProps) {
     try {
       console.log('Saving settings:', { phoneNumberId, accessToken: '***' });
 
-      const response = await fetch('/api/profile', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phoneNumberId,
-          whatsappAccessToken: accessToken,
-        }),
-      });
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || 'demo-user';
 
-      console.log('Save response status:', response.status);
+      const { data: existing } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Save failed:', errorText);
-        throw new Error(`Failed to save settings: ${response.status} ${errorText}`);
+      let result;
+      if (existing) {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .update({
+            phone_number_id: phoneNumberId,
+            whatsapp_access_token: accessToken,
+          })
+          .eq('id', userId)
+          .select()
+          .single();
+
+        if (error) throw error;
+        result = data;
+      } else {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: userId,
+            phone_number_id: phoneNumberId,
+            whatsapp_access_token: accessToken,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        result = data;
       }
 
-      const result = await response.json();
       console.log('Settings saved:', result);
-
       alert('Settings saved successfully!');
       onClose();
     } catch (error: any) {
